@@ -61,4 +61,4 @@ Below is a list of packages that ```CTPy``` is built on. Make sure you have them
 - [matplotlib](https://matplotlib.org/stable/index.html)
 
 ## Usage
-It is recommended that ```CTPy``` is utilized in conjunction with the Jupyter ecosystem, as many of the functions require the user to make decisions based results of prior figures/functions. 
+It is recommended that ```CTPy``` is utilized in conjunction with the Jupyter ecosystem, as many of the functions require the user to make decisions based results of prior figures/functions. For an example of how to utilize ```CTPy``` in your own work, please see the **Example** folder 
