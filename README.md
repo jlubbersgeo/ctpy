@@ -1,5 +1,9 @@
 # CTPy
 *CT data processing in Python*
+
+[![DOI](https://zenodo.org/badge/338938387.svg)](https://zenodo.org/badge/latestdoi/338938387)
+
+
 ## Overview
 ```CTPy``` is a collection of Python functions that helps go from a stack of 2D tomographic images that represent a 3D volume to that same volume segmented into user defined regions based on their grayscale value. Built on top of [scikit-image](https://scikit-image.org/), the functions help the user achieve the following:
 
