@@ -87,12 +87,7 @@ import time
 from skimage.transform import rescale, resize, downscale_local_mean
 
 import matplotlib.pyplot as plt
-plt.rcParams.update({
-    "text.usetex": True,
-    "font.family": "serif",
-    "font.serif": ["Palatino"],
-})
-tstart = time.time()
+
 ```
 
 # Import your CT data
@@ -102,7 +97,7 @@ The first step in image processing is to actually bring in the stack of 2D image
 
 ```python
 # path to the folder where your 2D images reside
-filepath = '/Volumes/JEL/microCT_scans/summer_2019/KNT_sanidine/segmented_crystals/KNT_summer2019_xtl8/stack_tifs'
+filepath = '/stack_tifs'
 
 #For figure labeling and saving purposes
 name = 'KNT8'
@@ -188,9 +183,6 @@ fig, ax = ct.denoise_slice_plot(cmap,
                                 nlm_smooth,
                                 name
                                )
-# fig.set_figheight(8)
-# fig.set_figwidth(10)
-# plt.savefig('/Users/jordanlubbers/Desktop/PhD/Research/Writing/3D_manuscript/{}_original_vs_denoise.pdf'.format(name),bbox_inches = 'tight')
 ```
 
 
@@ -209,7 +201,6 @@ fig, ax = ct.denoise_stack_plot('viridis',
                                 stack_rescale_array1D,
                                 nlm_smooth1D
                                )
-# plt.savefig('/Users/jordanlubbers/Desktop/PhD/Research/DATA/microCT/stack_histograms/{}_original_vs_denoise_stack.pdf'.format(name),bbox_inches = 'tight')
 ```
 
 
@@ -308,25 +299,13 @@ Similar to the ```import_stack``` function, the ```save_seg_results``` function 
 
 
 ```python
-outpath = '/Volumes/JEL/microCT_scans/summer_2019/KNT_sanidine/segmented_crystals/KNT_summer2019_xtl8/seg_results'
+outpath = '/seg_results'
 ct.save_seg_results(outpath,name,ws_results,cmap)
 ```
 
 
       0%|          | 0/484 [00:00<?, ?it/s]
 
-
-
-```python
-#time since you ran the first code block at the top
-ttotal = time.time() - tstart
-print(time.strftime("Total Runtime: %M minutes %S seconds",
-                    time.gmtime(ttotal)
-                   )
-     )
-```
-
-    Total Runtime: 11 minutes 11 seconds
 
 
 
@@ -339,21 +318,3 @@ np.save('{}/{}_seg_results.npy'.format(outpath,name),
 ```
 
 
-```python
-# ws_results = np.load('/Volumes/JEL/microCT_scans/summer_2019/KNT_sanidine/segmented_crystals/KNT_summer2019_xtl9/seg_results/KNT\_9_seg_results.npy')
-```
-
-
-```python
-
-```
-
-
-```python
-
-```
-
-
-```python
-
-```
