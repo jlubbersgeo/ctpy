@@ -5,7 +5,7 @@
 *Oregon State University College of Earth, Ocean, and Atmospheric Sciences* 
 
 
-**Last Updated:** 1/14/2021
+**Last Updated:** 2/14/2021
 
 # Overview
 This notebook goes outlines how a small, yet powerful, python module, ```CTPy```, helps go from a stack of 2D tomographic images that represent a 3D volume to that same volume segmented into user defined regions based on their grayscale value. Built on top of [scikit-image](https://scikit-image.org/), the functions help the user achieve the following:
@@ -60,19 +60,6 @@ help(ct.import_stack)
 ```
 
 
-# Import dependencies
-Below is a list of packages that ```CTPy``` is built on. Make sure you have them installed and operational on your computer:
-
-- [scikit-image](https://scikit-image.org/)
-- [numpy](https://numpy.org/install/)
-- [glob](https://docs.python.org/3/library/glob.html)
-- [PIL](https://pillow.readthedocs.io/en/stable/)
-- [tqdm](https://github.com/tqdm/tqdm)
-
-
-
-
-
 ```python
 # module of functions for CT data processing
 import ctpy as ct
@@ -81,11 +68,10 @@ import ctpy as ct
 # array operations outside of CTPy
 import numpy as np
 
-# timing things
-import time
-
+# rescaling dataset
 from skimage.transform import rescale, resize, downscale_local_mean
 
+#tweaking figures outside of CTPy
 import matplotlib.pyplot as plt
 
 ```
