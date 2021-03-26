@@ -33,8 +33,9 @@ from tqdm.notebook import tqdm
 
 #image processing
 from skimage import restoration
-from skimage.segmentation import watershed as ws
+from skimage.segmentation import watershed 
 from skimage import exposure
+from skimage.filters import sobel
 
 import time 
 
@@ -356,7 +357,7 @@ def denoise_stack_plot(cmap,bins,rescaled_stack1D,smoothed_stack1D):
     """
     colormap = plt.get_cmap(cmap)
     
-    fig, ax = plt.subplots(1,2,figsize = (12,6))
+    fig, ax = plt.subplots(1,2,figsize = (12,4))
 
     counts, bins, patches = ax[0].hist(rescaled_stack1D,
                                        bins = bins,
@@ -401,7 +402,70 @@ def denoise_stack_plot(cmap,bins,rescaled_stack1D,smoothed_stack1D):
     ax[1].set_xlim(0,1)
     
     return fig, ax
+
+
+def create_elevation_map(smoothed_stack):
+    """
+    create_elevation_map utilizes the sobel filter from skimage to create an
+    elevation map based on the gradient at each pixel. It iterates through the 
+    entire stack of data to create an individual elevation map for each image
+
+    Parameters
+    ----------
+    smoothed_stack : ndarray
+        3D denoised data array
+
+    Returns
+    -------
+    elevation_map : ndarray
+        collection of elevation maps in same shape as input (3D ndarray)
+
+    """
+    elevation_map = np.zeros(smoothed_stack.shape)
     
+    for i in tqdm(range(len(elevation_map))):
+        elevation_map[i,:,:] = sobel(smoothed_stack[i,:,:])
+        
+        
+    return elevation_map
+
+
+
+def plot_elevation_map(elevation_array,slice_number,cmap):
+    """
+    plot_elevation_map plots the sobel filter elevation map for a given slice in
+    your data
+
+    Parameters
+    ----------
+    elevation_array : ndarray
+        3D elevation map array. This is the output from the "create_elevation_map"
+        function
+    slice_number : int
+        slice in the stack you want to visualize
+    cmap : string
+        any valid matplotlib colormap to be used for visualizing the data 
+
+    Returns
+    -------
+    fig : matplotlib figure object
+       
+    ax : matplotlib axis object
+    
+    """
+
+    fig, ax = plt.subplots(figsize = (6,6))
+    
+    m = ax.imshow(elevation_array[slice_number],cmap = cmap)
+    ax.set_title('Elevation Map \n slice number: {}'.format(slice_number),fontsize = 20)
+    
+    cbar = fig.colorbar(m,ax = ax,shrink = .75,)
+    cbar.set_label(label = 'normalized gradient',fontsize = 16)
+    
+    ax.axis('off')
+    
+    return fig, ax
+
 # helper function to plot up markers and denoised data for a given slice
 def plot_markers(markers,smoothed_stack,slice_number,cmap):
     """
@@ -429,21 +493,22 @@ def plot_markers(markers,smoothed_stack,slice_number,cmap):
     ax : matplotlib axis object 
 
     """
-    fig, ax = plt.subplots(1,2,figsize = (16,8))
+    fig, ax = plt.subplots(1,2,figsize = (12,6))
     m = ax[0].imshow(markers[slice_number],cmap = cmap)
-    ax[0].set_title("Markers")
+    ax[0].set_title("Markers",fontsize = 20)
     bounds = np.linspace(0,5,6)
 
-    fig.colorbar(m,ax = ax[0],ticks = bounds,shrink = .6)
+    cbar = fig.colorbar(m,ax = ax[0],ticks = bounds,shrink = .6,)
+    cbar.set_label(label = 'marker value',fontsize = 16)
     ax[1].imshow(smoothed_stack[slice_number],cmap = cmap)
-    ax[1].set_title("Non Local Means")
+    ax[1].set_title("Denoised Data",fontsize =20)
 
     fig.tight_layout()
     
     return fig, ax
 
 # helper function to run the watershed algorithm and time it
-def run_watershed_segmentation(smoothed_stack,markers):
+def run_watershed_segmentation(elevation_array,markers):
     """
     run_watershed_segmentation utilizes the watershed function from the segmentation
     module (https://scikit-image.org/docs/dev/api/skimage.segmentation.html) and 
@@ -453,26 +518,29 @@ def run_watershed_segmentation(smoothed_stack,markers):
 
     Parameters
     ----------
-    smoothed_stack : ndarray
-        data to apply the watershed algorithm to
+    elevation_array : ndarray
+        data to apply the watershed algorithm to. This is our elevation map
+        3D matrix
     markers : ndarray
-        marker array in the same shape as the "smoothed_stack" argument
+        marker array in the same shape as the "elevation_array" argument
 
     Returns
     -------
     ws_results : ndarray
-        array in the same shape as the "smoothed_stack" array
+        array in the same shape as the "elevation_array" array
         with values from "markers" as decided by the watershed
         algorithm
 
     """
     
-    t_ws = time.time()
-    ws_results = ws(smoothed_stack, markers)
-    runtime_ws = time.time()-t_ws  
+    #containers
+    segmentation = np.zeros(elevation_array.shape)
+    for i in tqdm(range(len(elevation_array))):
+        
+        #fill segmentation array with watershed results for each slice
+        segmentation[i,:,:] = watershed(elevation_array[i,:,:], markers[i,:,:])
     
-    print ('watershed runtime',runtime_ws, 'seconds')
-    return ws_results
+    return segmentation
 
 # helper function for plotting up smoothed data, markers, and watershed results
 def plot_ws_results(smoothed_stack,markers,ws_results,slice_number,cmap):
@@ -507,13 +575,13 @@ def plot_ws_results(smoothed_stack,markers,ws_results,slice_number,cmap):
     fig, ax = plt.subplots(1, 3, figsize=(15, 5))
     ax[0].imshow(smoothed_stack[slice_number],cmap = cmap, interpolation='nearest')
     ax[0].axis('off')
-    ax[0].set_title('Smoothed data')
+    ax[0].set_title('Smoothed data',fontsize = 20)
     ax[1].imshow(markers[slice_number],cmap = cmap, interpolation='nearest')
     ax[1].axis('off')
-    ax[1].set_title('Markers')
+    ax[1].set_title('Markers',fontsize = 20)
     ax[2].imshow(ws_results[slice_number],cmap = cmap, interpolation='nearest')
     ax[2].axis('off')
-    ax[2].set_title('Segmentation')
+    ax[2].set_title('Segmentation',fontsize = 20)
 
     fig.subplots_adjust(hspace=0.01, wspace=0.01, top=1, bottom=0, left=0,
                         right=1)
