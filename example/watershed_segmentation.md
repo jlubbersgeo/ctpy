@@ -5,7 +5,7 @@
 *Oregon State University College of Earth, Ocean, and Atmospheric Sciences* 
 
 
-**Last Updated:** 1/14/2021
+**Last Updated:** 3/26/2021
 
 # Overview
 This notebook goes outlines how a small, yet powerful, python module, ```CTPy```, helps go from a stack of 2D tomographic images that represent a 3D volume to that same volume segmented into user defined regions based on their grayscale value. Built on top of [scikit-image](https://scikit-image.org/), the functions help the user achieve the following:
@@ -20,7 +20,8 @@ This notebook goes outlines how a small, yet powerful, python module, ```CTPy```
 4. **Denoise the data using a non-local means filter:** Creates more distinct histogram peaks while preserving textural information
 
 5. **Choose the [markers](https://www.cmm.mines-paristech.fr/~beucher/wtshed.html) for the watershed segmentation algorithm:** These help prevent oversegmentation and more accurate image classification
-6. **Apply [watershed algorithm](https://scikit-image.org/docs/dev/auto_examples/segmentation/plot_watershed.html) to entire stack:** Applies same markers for every image
+
+6. **Apply [watershed algorithm](https://scikit-image.org/docs/0.12.x/auto_examples/xx_applications/plot_coins_segmentation.html#region-based-segmentation) to entire stack:** Applies same markers for every image
 
 7. **Save segmented stack to folder:** This is done as a consecutive series of 2D images similar to imageJ
 
@@ -87,16 +88,13 @@ import time
 #progress bar
 from tqdm.notebook import tqdm
 
-
+# for rescaling data
 from skimage.transform import rescale, resize, downscale_local_mean
 
+# customizing plots outside of CTYPy
 import matplotlib.pyplot as plt
-plt.rcParams.update({
-    "text.usetex": True,
-    "font.family": "serif",
-    "font.serif": ["Palatino"],
-})
-tstart = time.time()
+
+
 ```
 
 # Import your CT data
@@ -106,7 +104,7 @@ The first step in image processing is to actually bring in the stack of 2D image
 
 ```python
 # path to the folder where your 2D images reside
-filepath = '/Users/jordanlubbers/Desktop/Test_figures/foram_stack'
+filepath = '/foram_stack'
 
 #For figure labeling and saving purposes
 name = 'Foram Test'
@@ -114,11 +112,6 @@ name = 'Foram Test'
 stack = ct.import_stack(filepath,'tif',name)
 ```
 
-
-      0%|          | 0/186 [00:00<?, ?it/s]
-
-
-    your stack is  186  images thick and is ready to denoise
 
 
 ## Rescale the stack
@@ -171,12 +164,6 @@ nlm_smooth, nlm_smooth1D = ct.denoise_stack(stack_rescale,10,10)
 ```
 
 
-      0%|          | 0/186 [00:00<?, ?it/s]
-
-
-    Your stack has been smoothed using the Skimage non-local means algorithm
-
-
 ## Compare denoised data with original (Slice)
 Below we utilize the ```denoise_slice_plot``` function to visualize what the non-local-means filter is doing on a slice-by-slice basis. It takes arguments for the matplotlib [colormap](https://matplotlib.org/3.1.0/gallery/color/colorbar_basics.html) you would like to use for visualizing the data, the bins to include in the histogram, the slice number you want to visualize in the stack, the original and smoothed stacks you want to compare, and the name of the dataset you are working with. It can be seen that after non-local means denoising, histogram for the image has much more pronounced peaks and may even parse noisy peaks into multiple. We are now in a better position to segment the image.
 
@@ -194,7 +181,6 @@ fig, ax = ct.denoise_slice_plot(cmap,
                                )
 # fig.set_figheight(8)
 # fig.set_figwidth(10)
-# plt.savefig('/Users/jordanlubbers/Desktop/PhD/Research/Writing/3D_manuscript/{}_original_vs_denoise.pdf'.format(name),bbox_inches = 'tight')
 ```
 
 
@@ -213,7 +199,6 @@ fig, ax = ct.denoise_stack_plot('viridis',
                                 stack_rescale_array1D,
                                 nlm_smooth1D
                                )
-# plt.savefig('/Users/jordanlubbers/Desktop/PhD/Research/DATA/microCT/stack_histograms/{}_original_vs_denoise_stack.pdf'.format(name),bbox_inches = 'tight')
 ```
 
 
@@ -231,7 +216,7 @@ A brief blurb on the watershed algorithem from [Roerdink and Meijster, 2000](htt
 "The watershed transform can be classified as a region-based segmentation approach. The intuitive idea underlying this method comes from geography: it is that of a landscape or topographic relief which is flooded by water, watersheds being the divide lines of the domains of attraction of rain falling over the region [46]. An alternative approach is to imagine the landscape being immersed in a lake, with holes pierced in local minima. Basins (also called ‘catchment basins’) will fill up with water starting at these local minima, and, at points where water coming from different basins would meet, dams are built. When the water level has reached the highest peak in the landscape, the process is stopped. As a result, the landscape is partitioned into regions or basins separated by dams, called watershed lines or simply watersheds."
 
 
-In ```CTPy``` we use the [sobel](https://scikit-image.org/docs/dev/auto_examples/edges/plot_edge_filter.html#sphx-glr-auto-examples-edges-plot-edge-filter-py) edge filter to make an "elevation map" as in this [example](https://scikit-image.org/docs/0.12.x/auto_examples/xx_applications/plot_coins_segmentation.html#region-based-segmentation) and represents the image gradient at each pixel. This ultimately is what we apply the watershed algorithm to, however first we need to define our markers! Think of the algorithm starting at these markers and moving out (up) from there, classifying the image not just by pixel value, but it's topographical location relative to the pixels around it. Because this adds in a spatial component to the image segmentation, it often times produces more accurate results than simple thresholding. Based on the histogram above you will determine the number of segments for your image (i.e. background, sample holder, phase 1, phase 2, etc.). To set watershed markers, in brief, we create a new array that is the same shape as our stack, but fill it with 0s. We are then going to replace those 0s with 'marker' values for a certain pixel range. For example:
+In ```CTPy``` we use the [sobel](https://scikit-image.org/docs/dev/auto_examples/edges/plot_edge_filter.html#sphx-glr-auto-examples-edges-plot-edge-filter-py) edge filter to make an "elevation map" as in this [example](https://scikit-image.org/docs/0.12.x/auto_examples/xx_applications/plot_coins_segmentation.html#region-based-segmentation) and represents the image gradient at each pixel. This ultimately is what we apply the watershed algorithm to, however first we need to define our markers! Think of the algorithm starting at these markers and moving out (up) from there, classifying the image not just by pixel value, but it's topographical location relative to the pixels around it. Because this adds in a spatial component to the image segmentation, it often produces more accurate results than simple thresholding. Based on the histogram above you will determine the number of segments for your image (i.e. background, sample holder, phase 1, phase 2, etc.). To set watershed markers, in brief, we create a new array that is the same shape as our stack, but fill it with 0s. We are then going to replace those 0s with 'marker' values for a certain pixel range. For example:
 
 ```python
 #phase 1 
@@ -257,8 +242,6 @@ fig,ax = ct.plot_elevation_map(elevation_map,
                               )
 ```
 
-
-      0%|          | 0/186 [00:00<?, ?it/s]
 
 
 
@@ -297,8 +280,6 @@ fig, ax = ct.plot_markers(markers,
 ```
 
 
-      0%|          | 0/186 [00:00<?, ?it/s]
-
 
 
     
@@ -314,14 +295,6 @@ Here we use the ```run_watershed_segmentation``` function to segment a given sta
 ws_results = ct.run_watershed_segmentation(elevation_map,markers)
 ```
 
-
-      0%|          | 0/186 [00:00<?, ?it/s]
-
-
-
-```python
-
-```
 
 ## Display the watershed results
 We can visualize the results of our segmentation for a single slice utilizing the ```plot_ws_results``` function. This will compare the denoised data, the markers, and the watershed segmentation results in a 1x3 panel. This function has arguments for the three stacks you are comparing, and the colormap you want to use to visualize them with. 
@@ -347,25 +320,9 @@ Similar to the ```import_stack``` function, the ```save_seg_results``` function 
 
 
 ```python
-outpath = '/Users/jordanlubbers/Desktop/Test_figures/foram_stack'
+outpath = '/foram_stack_segmented'
 ct.save_seg_results(outpath,name,ws_results,cmap)
 ```
-
-
-      0%|          | 0/186 [00:00<?, ?it/s]
-
-
-
-```python
-#time since you ran the first code block at the top
-ttotal = time.time() - tstart
-print(time.strftime("Total Runtime: %M minutes %S seconds",
-                    time.gmtime(ttotal)
-                   )
-     )
-```
-
-    Total Runtime: 01 minutes 46 seconds
 
 
 
@@ -377,22 +334,3 @@ np.save('{}/{}_seg_results.npy'.format(outpath,name),
        )
 ```
 
-
-```python
-# ws_results = np.load('/Volumes/JEL/microCT_scans/summer_2019/KNT_sanidine/segmented_crystals/KNT_summer2019_xtl9/seg_results/KNT\_9_seg_results.npy')
-```
-
-
-```python
-
-```
-
-
-```python
-
-```
-
-
-```python
-
-```
