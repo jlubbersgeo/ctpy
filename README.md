@@ -64,25 +64,8 @@ help(ct.import_stack)
 
 ```
 ## Installation and Usage
-```CTPy``` can be installed locally and run by creating a virtual environment. If you are new to python, we recommend doing this through [Anaconda](https://www.anaconda.com/products/individual).
+```CTPy``` can be installed locally and run by creating a virtual environment. This will ensure that there are no packaging conflicts with your existing ```base``` environment. If you are new to python, we recommend doing this through [Anaconda](https://www.anaconda.com/products/individual).
 
-```
-git clone https://github.com/jlubbersgeo/ctpy
-cd /path/to/ctpy
-conda create -n ctpy
-conda activate ctpy
-conda install --file requirements.txt
-```
-
-It is recommended that ```CTPy``` is utilized in conjunction with the Jupyter ecosystem, as many of the functions require the user to make decisions based results of prior figures/functions. For an example of how to utilize ```CTPy``` in your own work, please see the ```mineral_segmentation.ipynb``` example.
-
-
-From now on any time you wish to use ctpy, simply re-activate the virtual environment. All the requisite packages are still installed. 
-
-
-### Caveats
-
-On windows you may need to add the following channel for downloading the ```requirements.txt```file:
 ```
 git clone https://github.com/jlubbersgeo/ctpy
 cd /path/to/ctpy
@@ -91,4 +74,10 @@ conda activate ctpy
 conda config --append channels conda-forge
 conda install --file requirements.txt
 ```
+
+It is recommended that ```CTPy``` is utilized in conjunction with the Jupyter ecosystem, as many of the functions require the user to make decisions based results of prior figures/functions. For an example of how to utilize ```CTPy``` in your own work, please see the ```mineral_segmentation.ipynb``` example.
+
+
+From now on any time you wish to use ctpy, simply re-activate the virtual environment. All the requisite packages are still installed. 
+
 
