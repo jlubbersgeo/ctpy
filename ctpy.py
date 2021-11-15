@@ -5,7 +5,7 @@ Created on Thu Jan 14 17:49:35 2021
 
 @author: Jordan Lubbers, Oregon State University
 
-Last updated: 2/14/2021
+Last updated: 11/15/2021
 
 CTPy is a collection of functions dedicated to the processing of Computed 
 Tomography (CT) data in python. Built on top of scikit-image, it imports, 
@@ -18,29 +18,34 @@ the research question under investigation.
 Happy processing!
 
 """
-import matplotlib.pyplot as plt 
+# bulk file import
+import glob as glob
 
+# for...warnings
+import warnings
 
-#array operations
+# visualization
+import matplotlib.pyplot as plt
+
+# array operations
 import numpy as np
 
-#importing data
-import glob as glob
+# saving metadata
+import pandas as pd
 from PIL import Image
 
-#progress bar
+# image processing
+from skimage import exposure, restoration
+from skimage.filters import prewitt, roberts, scharr, sobel
+from skimage.segmentation import watershed
+
+# progress bar
 from tqdm.notebook import tqdm
 
-#image processing
-from skimage import restoration
-from skimage.segmentation import watershed 
-from skimage import exposure
-from skimage.filters import sobel
 
-import time 
-
+#%%
 # helper function to import an entire folder of 2D images
-def import_stack(filepath,filetype,name):
+def import_stack(filepath, filetype, name, downsample=False):
     """
     import_stack imports a stack of images and converts them into a 3D numpy 
     array so that it can be further processed using either numpy functions or
@@ -59,6 +64,9 @@ def import_stack(filepath,filetype,name):
     name : string
         name of the dataset you are working with. This will be utilized for 
         figure labeling and filesaving functions later on.
+    rescale: float
+        factor to downsample by. .5 is downsampling by factor of 2, .1 is factor 
+        of 10, etc.
 
     Returns
     -------
@@ -69,43 +77,149 @@ def import_stack(filepath,filetype,name):
         format, this is analagous to [y,x,z]
 
     """
-    if 'png' in filetype:  
+    if "png" in filetype:
         # creates a list of filepaths for each 2D images
-        infiles = glob.glob('{}/*.png'.format(filepath))
-    
-    elif 'tif' in filetype:
-        # creates a list of filepaths for each 2D images
-        infiles = glob.glob('{}/*.tif'.format(filepath))
-    
-    elif 'jpg' in filetype:
-        # creates a list of filepaths for each 2D images
-        infiles = glob.glob('{}/*.jpg'.format(filepath))    
+        infiles = sorted(glob.glob("{}/*.png".format(filepath)))
 
+    elif "tif" in filetype:
+        # creates a list of filepaths for each 2D images
+        infiles = sorted(glob.glob("{}/*.tif".format(filepath)))
 
-    #open the first image to acquire image size
+    elif "jpg" in filetype:
+        # creates a list of filepaths for each 2D images
+        infiles = sorted(glob.glob("{}/*.jpg".format(filepath)))
+
+    # open the first image to acquire image size
     im = Image.open(infiles[0])
 
-    #create an 'empty' array filled with zeros, (Slices X width X length) is the shape of the array.
-    stack = np.zeros((len(infiles),im.size[1],im.size[0]))
+    # create an 'empty' array filled with zeros, (Slices X width X length) is the shape of the array.
+    stack = np.zeros((len(infiles), im.size[1], im.size[0]))
 
-    #loop the files, each iteration adds one slice layer into the array.
+    # loop the files, each iteration adds one slice layer into the array.
     i = 0
+    print("Importing images")
     for imfile in tqdm(infiles):
         im = Image.open(imfile)
-        stack[i,:,:] = np.array(im)
-        i+=1
+        stack[i, :, :] = np.array(im)
+        i += 1
 
-    
-    
-    stack_length = len(infiles)
-    print('your stack is ',stack_length, ' images thick and is ready to denoise')
-    #Now, all values of the images are imported into the 3D array named 'stack', thus the array 'stack' 
-    #is equivalent to the digitised real object
-    return stack
+    # force each image to have a shape comprised of two even numbers
+    # such that we can at least downsample by a factor of 2
+
+    # original rows and cols dimensions
+    input_size_rows = stack.shape[1]
+    input_size_cols = stack.shape[2]
+
+    # make row and column dimensions even numbers
+    if input_size_rows % 2 == 0:
+
+        input_size_rows = input_size_rows
+
+    else:
+        input_size_rows = input_size_rows - 1
+
+    if input_size_cols % 2 == 0:
+
+        input_size_cols = input_size_cols
+
+    else:
+
+        input_size_cols = input_size_cols - 1
+
+    # update the stack dimensions by trimming off a pixel
+    # from either the rows or the columns (or both)
+    stack = stack[:, :input_size_rows, :input_size_cols]
+
+    # DOWNSAMPLING
+    ## uses following example from scipy cookbook
+    # https://scipython.com/blog/binning-a-2d-array-in-numpy/
+
+    # note this will only downsample by common factors between
+    # the rows and columns dimensions
+
+    # here's a helper function to figure that out:
+    def cf(num1, num2):
+        common_factors = []
+        for i in range(1, min(num1, num2) + 1):
+            if num1 % i == num2 % i == 0:
+                common_factors.append(i)
+        return common_factors
+
+    # downsampled rows and cols dimensions
+    output_size_rows = stack.shape[1] // downsample
+    output_size_cols = stack.shape[2] // downsample
+
+    # array of potential downsampling factors based on input
+    # shape
+    common_factors = np.array(cf(input_size_rows, input_size_cols))
+
+    # downsample if the specified factor is a potential common factor
+    if downsample in common_factors:
+        print("downsampling images")
+        # bin size for rows and cols
+        bin_size_rows = input_size_rows // output_size_rows
+        bin_size_cols = input_size_cols // output_size_cols
+
+        # create empty array to fill with downsampled data
+        # this will have downsampled rows and cols but NOT
+        # height
+
+        stack_downsample = np.zeros(
+            (stack.shape[0], output_size_rows, output_size_cols)
+        )
+
+        # loop through and complete downsampling for every slice and
+        # add it to the empty array defined above
+        for i in tqdm(range(stack.shape[0])):
+
+            im = stack[i, :, :]
+            im_downsample = (
+                im.reshape(
+                    (output_size_rows, bin_size_rows, output_size_cols, bin_size_cols)
+                )
+                .mean(-1)
+                .mean(1)
+            )
+
+            stack_downsample[i, :, :] = im_downsample
+
+        stack_downsample = stack_downsample[::downsample, :, :]
+
+        print("your original stack dimensions are {}".format(stack.shape))
+        print("your downsampled stack dimensions are {}".format(stack_downsample.shape))
+
+        return stack_downsample, stack.shape
+
+    elif downsample not in common_factors:
+        warnings.warn(
+            """You have chosen a downsampling factor that is not a common factor \n of your row 
+            and column shapes and have therefore returned the original data. Please choose an 
+            appropriate downsampling factor"""
+        )
+        print("your stack dimensions are {}".format(stack.shape))
+        print("potential downsampling factors: {}".format(common_factors))
+        return stack, stack.shape
+
+    elif downsample is False and stack.ravel().shape > 125000000:
+        warnings.warn(
+            """please condsider downsampling your stack as it is very large and 
+            image processing may become much more difficult pending your computer 
+            capabilities. Check your Activity monitor for advice.
+            """
+        )
+        return stack, stack.shape
+
+    else:
+        print("your stack dimensions are {}".format(stack.shape))
+
+        return stack, stack.shape
+
+
+#%%
 
 # helper function to rescale the data between 0 and 1 and also trim
 # it at upper and lower limits
-def rescale_stack(lower_lim,upper_lim,stack,slice_number,cmap):
+def rescale_stack(lower_lim, upper_lim, stack):
     """
     rescale_stack uses lower and upper defined boundaries to apply contrast 
     contrast stretching to a desired stack. In brief, it uses percentiles as 
@@ -124,12 +238,7 @@ def rescale_stack(lower_lim,upper_lim,stack,slice_number,cmap):
         upper limit of the rescale range in percent (e.g., 99.99)
     stack : ndarray
         dataset to apply the contrast stretching to. Must be a 3D array
-    slice_number : int
-        slice number in the stack to be visualized for comparison between 
-        original and contrast stretched data
-    cmap : string
-        any valid matplotlib colormap
-
+    
     Returns
     -------
     stack_rescale : ndarray
@@ -138,59 +247,27 @@ def rescale_stack(lower_lim,upper_lim,stack,slice_number,cmap):
     stack_rescaleArray1D : 1D array
         contrast stretched data flattened to 1D so it can be visualized in a 
         histogram
-    fig : matplotib figure object
-    ax : matplotlib axis object 
 
     """
-    
-    #find the pixel values of the upper and lower percentile limits
-    plow,phigh = np.percentile(stack,(lower_lim,upper_lim))
 
-    #use those values to rescale the data
-    stack_rescale = exposure.rescale_intensity(stack,in_range=(plow,phigh))
-    
+    # find the pixel values of the upper and lower percentile limits
+    plow, phigh = np.percentile(stack, (lower_lim, upper_lim))
 
-    #Histogram of your whole stack rescaled between 0 and 1
-    stackArray1D = stack.ravel()
+    # use those values to rescale the data
+    stack_rescale = exposure.rescale_intensity(stack, in_range=(plow, phigh))
+
+    stack_normal = (stack_rescale - stack_rescale.min()) / (
+        stack_rescale.max() - stack_rescale.min()
+    )
+
+    stack_normal1D = stack_normal.ravel()
 
 
-    # plot up the comparison between original stack and rescaled stack
-    fig, ax, = plt.subplots(2,2,figsize = (10,10))
+    return plow, phigh, stack_normal, stack_normal1D
 
-    ax[0,0].hist(stackArray1D,
-                 bins = 100,
-                 color = 'gray'
-                )
-    ax[0,0].set_title('Stack Histogram',fontsize = 20)
-    ax[0,0].set_yscale('log')
-    ax[0,0].axvline(phigh,c = 'r',label = '{}% of data'.format(upper_lim))
-    ax[0,0].legend(loc = 'upper left')
-    ax[0,0].set_ylabel('counts',fontsize = 14)
-    ax[0,0].set_xlabel('pixel value',fontsize = 14)
-    
-    #show the first image of the stack
-    ax[0,1].imshow(stack[slice_number],cmap=cmap)  
-    ax[0,1].set_title('Slice {} of stack'.format(slice_number))
-
-    #rescaled data
-    stack_rescaleArray1D = stack_rescale.reshape(-1)
-    ax[1,0].hist(stack_rescaleArray1D,
-                 bins = 100,
-                 color = 'gray'
-                )
-    ax[1,0].set_yscale('log')
-    ax[1,0].set_ylabel('counts',fontsize = 14)
-    ax[1,0].set_xlabel('rescaled pixel value',fontsize = 14)
-    ax[1,0].set_title('Normalized and rescaled stack',fontsize = 20)
-    #show the first image of the stack
-    ax[1,1].imshow(stack[slice_number],cmap=cmap)  
-    ax[1,1].set_title('Slice {} of rescaled stack'.format(slice_number))
-    fig.tight_layout()
-    
-    return stack_rescale, stack_rescaleArray1D, fig, ax 
-
+#%%
 # helper function for denoising your stack with the non local means function
-def denoise_stack(stack_rescale,patch_size,patch_distance):
+def denoise_stack(stack_rescale, patch_size, patch_distance):
     """
     denoise_stack applies the non-local-means filter from scikit-image restoration
     module (https://scikit-image.org/docs/dev/api/skimage.restoration.html) to 
@@ -221,190 +298,25 @@ def denoise_stack(stack_rescale,patch_size,patch_distance):
     """
     stack_length = len(stack_rescale)
     nlm_smooth = []
-    for i in tqdm(range(0,stack_length)):
-        patch_kw = dict(patch_size=patch_size,patch_distance=patch_distance,multichannel=True)
-        nlm_smooth.append(restoration.denoise_nl_means(stack_rescale[i],  fast_mode=True,**patch_kw)) 
+    for i in tqdm(range(0, stack_length)):
+        patch_kw = dict(
+            patch_size=patch_size, patch_distance=patch_distance, multichannel=True
+        )
+        nlm_smooth.append(
+            restoration.denoise_nl_means(stack_rescale[i], fast_mode=True, **patch_kw)
+        )
     # convert from list to numpy array
-    nlm_array = np.asarray(nlm_smooth)
-    nlm_array1D = nlm_array.ravel()
+    stack_nlm = np.asarray(nlm_smooth)
+    stack_nlm_1D = stack_nlm.ravel()
 
-    print('Your stack has been smoothed using the Skimage non-local means algorithm')
-    
-    return nlm_array, nlm_array1D
+    print("Your stack has been smoothed using the Skimage non-local means algorithm")
+    print("patch size: {}".format(patch_size))
+    print("patch distance: {}".format(patch_distance))
 
+    return stack_nlm, stack_nlm_1D
 
-# helper function to plot raw slice data and denoised slice data with their histograms
-def denoise_slice_plot(cmap,bins,slice_number,rescaled_stack,smoothed_stack,name):
-    """
-    denoise_slice_plot plots the results of the "denoise_stack" function for a 
-    desired slice in a similar arrangement to the "rescale_stack" function, where
-    both a 2D image and histogram for the 2D image are plotted for the original
-    and denoised slice.
-    
-    denoise_slice_plot(cmap,bins,slice_number,rescaled_stack,smoothed_stack,name):
-
-    Parameters
-    ----------
-    cmap : string
-        any valid matplotlib colormap (e.g., viridis, plasma, magma, etc.)
-    bins : int
-        number of bins to be displayed in the histograms
-    slice_number : int
-        slice number in the stack to be visualized for comparison between 
-        original and denoised data
-    rescaled_stack : ndarray
-        stack of raw/rescaled data to be compared to the denoised data
-    smoothed_stack : ndarray
-        stack of denoised data from the "denoise_stack" function. "rescaled_stack"
-        and "smoothed_stack" must be the same shape
-    name : string
-       name for the dataset you are working with. Try to keep this consistent
-       throughout the process. 
-
-    Returns
-    -------
-    fig : matplotib figure object
-    ax : matplotlib axis object 
-
-    """
-    colormap = plt.get_cmap(cmap)
-    nlm_smoothArray1D = smoothed_stack[slice_number].reshape(-1)
-    slice_Array1D = rescaled_stack[slice_number].reshape(-1)
-
-
-    fig, ax = plt.subplots(2,2, figsize = (15,10),gridspec_kw = {'width_ratios':[2,1],})
-    fig.suptitle('Comparing slice {} before and after denoising \n {}'.format(slice_number,name), fontsize=18)
-
-    #Histogram for rescaled image
-    counts, bins, patches = ax[0,0].hist(slice_Array1D, bins = bins,)
-    ax[0,0].minorticks_on()
-    ax[0,0].set_xlim(0,1)
-    ax[0,0].set_ylabel('counts',fontsize = 20)
-    ax[0,0].set_title('Rescaled Image',fontsize = 20,y = .85)
-
-    #get the value for center of bins
-    bin_centers = 0.5 * (bins[:-1] + bins[1:])
-
-    #color the histogram by value
-    for c, p in zip(bin_centers,patches):
-        plt.setp(p,'facecolor',colormap(c))
-
-    #rescaled image
-    ax[0,1].imshow(rescaled_stack[slice_number],cmap=cmap)
-    ax[0,1].axes.yaxis.set_ticklabels([])
-    ax[0,1].axes.yaxis.set_ticks([])
-    ax[0,1].axes.xaxis.set_ticklabels([])
-    ax[0,1].axes.xaxis.set_ticks([])   
-
-    #Histogram for non local means image
-    counts2, bins2, patches2, = ax[1,0].hist(nlm_smoothArray1D, bins = bins,)
-
-    #get value for center of bins
-    bin_centers2 = 0.5 * (bins[:-1] + bins[1:])
-
-    #color the histogram by value
-    for c, p in zip(bin_centers2,patches2):
-        plt.setp(p,'facecolor',colormap(c))
-    ax[1,0].minorticks_on()
-    ax[1,0].set_ylim(0,1.05*np.max(counts2))
-    ax[0,0].set_ylim(0,1.05*np.max(counts2))
-
-    ax[1,0].set_xlim(0,1)
-    ax[1,0].set_xlabel('normalized pixel value',fontsize = 14)
-    ax[1,0].set_title('Non-local Means image', fontsize = 20, y = .85)   
-    ax[1,0].set_ylabel('counts',fontsize = 20)
-
-
-    #non local means image   
-    ax[1,1].imshow(smoothed_stack[slice_number],cmap = cmap)
-    ax[1,1].axes.yaxis.set_ticklabels([])
-    ax[1,1].axes.yaxis.set_ticks([])
-    ax[1,1].axes.xaxis.set_ticklabels([])
-    ax[1,1].axes.xaxis.set_ticks([])
-    fig.tight_layout()
-    
-    return fig, ax
-    
-    
-    
-    
-# helper function for plotting up histograms of raw stack and denoised stack   
-def denoise_stack_plot(cmap,bins,rescaled_stack1D,smoothed_stack1D):
-    """
-    denoise_stack_plot plots the results of the "denoise_stack" function for 
-    the entire stack in the form of a histogram for the datset before and after
-    denoising
-    
-    denoise_stack_plot(cmap,bins,rescaled_stack1D,smoothed_stack1D):
-
-    Parameters
-    ----------
-    cmap : string
-        any valid matplotlib colormap (e.g., viridis, plasma, magma, etc.)
-    bins : int
-        number of bins to be displayed in the histograms
-    rescaled_stack1D : 1D array
-        1D array pertaining to the original or rescaled dataset that was the 
-        input for the "denoise_stack" function
-    smoothed_stack1D : 1D array
-        1D array pertaining to the results of the denoised stack.
-
-    Returns
-    -------
-    fig : matplotib figure object
-    ax : matplotlib axis object 
-
-    """
-    colormap = plt.get_cmap(cmap)
-    
-    fig, ax = plt.subplots(1,2,figsize = (12,4))
-
-    counts, bins, patches = ax[0].hist(rescaled_stack1D,
-                                       bins = bins,
-
-    )
-    ax[0].set_title('Noisy Stack Histogram',fontsize = 20)
-    ax[0].set_xlabel('normalized pixel value',fontsize = 20)
-    ax[0].set_ylabel('counts',fontsize = 20)
-    ax[0].minorticks_on()
-
-
-    counts2, bins2, patches2 = ax[1].hist(smoothed_stack1D,
-                                          bins = bins,
-
-
-    )
-
-    #make histograms colored by normalized pixel value
-    #first histogram
-    #get the value for the center of the bins
-    bin_centers = 0.5 * (bins[:-1] + bins[1:])
-
-    #color the histogram by value
-    for c, p in zip(bin_centers,patches):
-        plt.setp(p,'facecolor',colormap(c))
-
-    #second histogram
-    bin_centers2 = 0.5 * (bins[:-1] + bins[1:])
-
-    #color the histogram by value
-    for c, p in zip(bin_centers2,patches2):
-        plt.setp(p,'facecolor',colormap(c))
-
-    ax[1].set_title('Denoised Stack Histogram',fontsize = 20)
-    ax[1].set_xlabel('normalized pixel value')
-    ax[1].minorticks_on()
-    # ax[0].set_yscale('log')
-    # ax[1].set_yscale('log')
-    ax[0].set_ylim(0,np.max(1.05*counts2))
-    ax[1].set_ylim(0,np.max(1.05*counts2))
-    ax[0].set_xlim(0,1)
-    ax[1].set_xlim(0,1)
-    
-    return fig, ax
-
-
-def create_elevation_map(smoothed_stack):
+#%%
+def create_elevation_map(smoothed_stack, method):
     """
     create_elevation_map utilizes the sobel filter from skimage to create an
     elevation map based on the gradient at each pixel. It iterates through the 
@@ -414,6 +326,11 @@ def create_elevation_map(smoothed_stack):
     ----------
     smoothed_stack : ndarray
         3D denoised data array
+    
+    method : string
+        'sobel', 'roberts', 'scharr', 'prewitt'. This determines the type of 
+        edge operator to use in creating the elevation map. See example here:
+        https://scikit-image.org/docs/dev/auto_examples/edges/plot_edge_filter.html
 
     Returns
     -------
@@ -422,93 +339,92 @@ def create_elevation_map(smoothed_stack):
 
     """
     elevation_map = np.zeros(smoothed_stack.shape)
-    
-    for i in tqdm(range(len(elevation_map))):
-        elevation_map[i,:,:] = sobel(smoothed_stack[i,:,:])
-        
-        
+    if method == "sobel":
+
+        for i in tqdm(range(len(elevation_map))):
+            elevation_map[i, :, :] = sobel(smoothed_stack[i, :, :])
+
+    elif method == "roberts":
+        for i in tqdm(range(len(elevation_map))):
+            elevation_map[i, :, :] = roberts(smoothed_stack[i, :, :])
+
+    elif method == "scharr":
+        for i in tqdm(range(len(elevation_map))):
+            elevation_map[i, :, :] = scharr(smoothed_stack[i, :, :])
+
+    elif method == "prewitt":
+        for i in tqdm(range(len(elevation_map))):
+            elevation_map[i, :, :] = prewitt(smoothed_stack[i, :, :])
+
     return elevation_map
 
 
-
-def plot_elevation_map(elevation_array,slice_number,cmap):
+#%%
+def add_markers(stack_nlm, phase_limits):
     """
-    plot_elevation_map plots the sobel filter elevation map for a given slice in
-    your data
-
-    Parameters
+    Parameters:
     ----------
-    elevation_array : ndarray
-        3D elevation map array. This is the output from the "create_elevation_map"
-        function
-    slice_number : int
-        slice in the stack you want to visualize
-    cmap : string
-        any valid matplotlib colormap to be used for visualizing the data 
-
-    Returns
-    -------
-    fig : matplotlib figure object
-       
-    ax : matplotlib axis object
+    
+    stack_nlm | ndarray
+    denoised data array. This is used to create the right size ndarray
+    for the marker array
+    
+    phase_limits | list
+    list of values to be used as delimiters for the phase boundaries.
+    For phases that are neither the most or least attenuating values
+    will be a list:
+    
+    phase_limits = [[0.5],
+                    [0.6, 0.7],
+                    [0.84]]
+                    
+    This will set markers for three phases where pixel locations with values
+    less than 0.5 will be used as a marker for phase 1, locations with values 
+    between 0.6 and 0.7 will be used as a marker for phase 2, locations with
+    values greater than 0.84 will be used as a marker for phase 3. 
+    
+    Returns:
+    --------
+    
+    markers | ndarray
+    
+    marker array the same shape as the input array. All unspecified marker
+    locations are 0
     
     """
+    markers = np.zeros(stack_nlm.shape)
 
-    fig, ax = plt.subplots(figsize = (6,6))
-    
-    m = ax.imshow(elevation_array[slice_number],cmap = cmap)
-    ax.set_title('Elevation Map \n slice number: {}'.format(slice_number),fontsize = 20)
-    
-    cbar = fig.colorbar(m,ax = ax,shrink = .75,)
-    cbar.set_label(label = 'normalized gradient',fontsize = 16)
-    
-    ax.axis('off')
-    
-    return fig, ax
+    for j in range(len(phase_limits)):
+        print("filling markers for phase: {}".format(j + 1))
 
-# helper function to plot up markers and denoised data for a given slice
-def plot_markers(markers,smoothed_stack,slice_number,cmap):
-    """
-    plot_markers compares the markers established for the watershed algorithm
-    with the denoised data by plotting the two images side by side 
-    
-    plot_markers(markers,smoothed_stack,slice_number,cmap):
-        
-    Parameters
-    ----------
-    markers : ndarray
-        3D array in the same shape as the denoised data that contains marker values
-        for the watershed algorithm
-    smoothed_stack : ndarray
-        3D array representing the denoised stack of data. "markers" and "smoothed_stack"
-        must be the same shape
-    slice_number : int
-        slice number to be visulaized in the comparison
-    cmap : string
-        any valid matplotlib colormap
+        if len(phase_limits[j]) == 1:
 
-    Returns
-    -------
-    fig : matplotib figure object
-    ax : matplotlib axis object 
+            if j == len(phase_limits) - 1:
+                print("pixel boundary: x > {}".format(phase_limits[j]))
+                for i in tqdm(range(len(markers))):
+                    markers[i, :, :][stack_nlm[i] > phase_limits[j]] = j + 1
+            else:
+                print("pixel boundary: x < {}".format(phase_limits[j]))
+                for i in tqdm(range(len(markers))):
+                    markers[i, :, :][stack_nlm[i] < phase_limits[j]] = j + 1
 
-    """
-    fig, ax = plt.subplots(1,2,figsize = (12,6))
-    m = ax[0].imshow(markers[slice_number],cmap = cmap)
-    ax[0].set_title("Markers",fontsize = 20)
-    bounds = np.linspace(0,5,6)
+        elif len(phase_limits[j]) == 2:
+            print(
+                "pixel boundary: {} > x > {}".format(
+                    phase_limits[j][0], phase_limits[j][1]
+                )
+            )
+            for i in tqdm(range(len(markers))):
+                markers[i, :, :][
+                    np.logical_and(
+                        stack_nlm[i] > phase_limits[j][0],
+                        stack_nlm[i] < phase_limits[j][1],
+                    )
+                ] = (j + 1)
+    return markers
 
-    cbar = fig.colorbar(m,ax = ax[0],ticks = bounds,shrink = .6,)
-    cbar.set_label(label = 'marker value',fontsize = 16)
-    ax[1].imshow(smoothed_stack[slice_number],cmap = cmap)
-    ax[1].set_title("Denoised Data",fontsize =20)
-
-    fig.tight_layout()
-    
-    return fig, ax
-
-# helper function to run the watershed algorithm and time it
-def run_watershed_segmentation(elevation_array,markers):
+#%%
+def run_watershed_segmentation(elevation_array, markers):
     """
     run_watershed_segmentation utilizes the watershed function from the segmentation
     module (https://scikit-image.org/docs/dev/api/skimage.segmentation.html) and 
@@ -532,64 +448,17 @@ def run_watershed_segmentation(elevation_array,markers):
         algorithm
 
     """
-    
-    #containers
+
+    # containers
     segmentation = np.zeros(elevation_array.shape)
     for i in tqdm(range(len(elevation_array))):
-        
-        #fill segmentation array with watershed results for each slice
-        segmentation[i,:,:] = watershed(elevation_array[i,:,:], markers[i,:,:])
-    
+
+        # fill segmentation array with watershed results for each slice
+        segmentation[i, :, :] = watershed(elevation_array[i, :, :], markers[i, :, :])
+
     return segmentation
 
-# helper function for plotting up smoothed data, markers, and watershed results
-def plot_ws_results(smoothed_stack,markers,ws_results,slice_number,cmap):
-    """
-    plot_ws_results compares the denoised data, markers for the watershed algorthim,
-    and the results for the watershed algorthim in a 1x3 panel plot.
-    
-    plot_ws_results(smoothed_stack,markers,ws_results,slice_number,cmap):
-        
-    Parameters
-    ----------
-    smoothed_stack : ndarray
-        stack that the watershed algorithm was applied to
-    markers : ndarray
-        marker array in the same shape as "smoothed_stack" used to train the 
-        watershed algorithm
-    ws_results : ndarray
-        results from the watershed segmentation
-        
-    slice_number : int
-        number pertaining to the individual slice you want to visualize from 
-        the stack
-    cmap : string
-        any valid matplotlib colormap
-
-    Returns
-    -------
-    fig : matplotib figure object
-    ax : matplotlib axis object 
-
-    """
-    fig, ax = plt.subplots(1, 3, figsize=(15, 5))
-    ax[0].imshow(smoothed_stack[slice_number],cmap = cmap, interpolation='nearest')
-    ax[0].axis('off')
-    ax[0].set_title('Smoothed data',fontsize = 20)
-    ax[1].imshow(markers[slice_number],cmap = cmap, interpolation='nearest')
-    ax[1].axis('off')
-    ax[1].set_title('Markers',fontsize = 20)
-    ax[2].imshow(ws_results[slice_number],cmap = cmap, interpolation='nearest')
-    ax[2].axis('off')
-    ax[2].set_title('Segmentation',fontsize = 20)
-
-    fig.subplots_adjust(hspace=0.01, wspace=0.01, top=1, bottom=0, left=0,
-                        right=1)
-    
-    return fig, ax
-    
-#create a function that plots the segmented image and save as image sequences
-
+#%%
 def save_seg_results(outpath, name, ws_results, cmap):
     """
     save_seg_results takes each segmented 2D image (array) and saves them as 
@@ -617,15 +486,122 @@ def save_seg_results(outpath, name, ws_results, cmap):
     None.
 
     """
-    
+
     for i in tqdm(range(len(ws_results))):
-        
-        fig, axes = plt.subplots(nrows=1,ncols=1)
+
+        fig, axes = plt.subplots(nrows=1, ncols=1)
         ax0 = axes
-        ax0.imshow(ws_results[i],cmap = cmap) #choose your segmentation algorithm here
-        ax0.axis('off')   #no axes so its just the image 
+        ax0.imshow(ws_results[i], cmap=cmap)  # choose your segmentation algorithm here
+        ax0.axis("off")  # no axes so its just the image
 
         fig.set_size_inches(5, 5)
-        fig.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=None, hspace=None)
-        plt.savefig("{}/{}_seg_results{}.tif".format(outpath,name,i),bbox_inches='tight')
+        fig.subplots_adjust(
+            left=None, bottom=None, right=None, top=None, wspace=None, hspace=None
+        )
+        plt.savefig(
+            "{}/{}_seg_results{}.tif".format(outpath, name, i), bbox_inches="tight"
+        )
         plt.close()
+    print("Your images have been saved to the following directory:\n{}".format(outpath))
+    
+#%%
+def save_metadata(segmentation_metadata, phase_limits, outpath, filename):
+
+    """
+    For the reproducible segmentation of your CT volume, this will
+    produce a .csv file with all the decisions made in the segmentation
+    process.
+    
+    
+    
+    Parameters:
+    -----------
+    
+    segmentation_metadata | dict
+    dictionary organized as follows:
+    
+    segmentation_metadata = {
+        "name": name,
+        "original_stack_shape": [original_stack_shape],
+        "processed_stack_shape": [stack.shape],
+        "rescaled_percentile_values": [[lower_lim, upper_lim]],
+        "denoise_patch_size": patch_size,
+        "denoise_patch_distance": patch_distance,
+        "elevation_map_algorithm": elevation_algorithm,
+    }
+    
+    phase_limits | list
+    list of values to be used as delimiters for the phase boundaries.
+    For phases that are neither the most or least attenuating values
+    will be a list:
+    
+    phase_limits = [[0.5],
+                    [0.6, 0.7],
+                    [0.84]]
+                    
+    This will set markers for three phases where pixel locations with values
+    less than 0.5 will be used as a marker for phase 1, locations with values 
+    between 0.6 and 0.7 will be used as a marker for phase 2, locations with
+    values greater than 0.84 will be used as a marker for phase 3. 
+    
+
+    
+    outpath | string
+    the directory to save the metadata to
+    
+    filename| the name of the file being saved
+    
+    
+    
+    Returns:
+    --------
+    
+    None
+    
+    *will save a csv with metadata in the form of a table to the 
+    specified directory. Ex:
+    
+        Parameter|value
+        ----------------------
+        name|0009_20CJ04_x7_A
+        ------------------------------------
+        original_stack_shape|(544, 860, 872)
+        ------------------------------------
+        processed_stack_shape|(272, 430, 436)
+        ------------------------------------
+        rescaled_percentile_values|[0.05, 99.97]
+        ------------------------------------
+        denoise_patch_size|10
+        ------------------------------------
+        denoise_patch_distance|10
+        ------------------------------------
+        elevation_map_algorithm|sobel
+        ------------------------------------
+        phase 1 normalized pixel boundary|[0.5]
+        ------------------------------------
+        phase 2 normalized pixel boundary|[0.6, 0.67]
+        ------------------------------------
+        phase 3 normalized pixel boundary|[0.7, 0.83]
+        ------------------------------------
+        phase 4 normalized pixel boundary|[0.84]
+
+    """
+
+    
+    for i, limit in enumerate(phase_limits):
+        segmentation_metadata.update(
+            {"phase {} normalized pixel boundary".format(i + 1): [limit]}
+        )
+
+    outfile = "{}_segmentation_metadata.csv".format(filename)
+
+    df = pd.DataFrame(
+        dict([(k, pd.Series(v)) for k, v in segmentation_metadata.items()])
+    ).T.reset_index()
+    df.columns = ["Parameter", "value"]
+    df.to_csv(outpath + outfile, index=False)
+    print(
+        "Your metadata has been saved as:\n{}\n\nin the following directory: \n{}".format(
+            outfile, outpath
+        )
+    )
