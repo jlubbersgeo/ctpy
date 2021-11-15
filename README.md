@@ -32,12 +32,13 @@ help(ct.import_stack)
 ```
 ```
 
+    """
     import_stack imports a stack of images and converts them into a 3D numpy 
     array so that it can be further processed using either numpy functions or
     scikit-image based functions in the CTPy functions in the module.
     
     import_stack(filepath,filetype,name):
-
+        
     Parameters
     ----------
     filepath : string
@@ -49,7 +50,9 @@ help(ct.import_stack)
     name : string
         name of the dataset you are working with. This will be utilized for 
         figure labeling and filesaving functions later on.
-
+    rescale: float
+        factor to downsample by. .5 is downsampling by factor of 2, .1 is factor 
+        of 10, etc.
     Returns
     -------
     stack : ndarray
@@ -57,17 +60,35 @@ help(ct.import_stack)
         image (e.g., slice) in the dataset and the last dimension pertains to 
         the slice number in the stack. Since numpy arrays are in [rows,columns,depth]
         format, this is analagous to [y,x,z]
+    """
 
 ```
-## Dependencies
-Below is a list of packages that ```CTPy``` is built on. Make sure you have them installed and operational on your computer:
+## Installation and Usage
+```CTPy``` can be installed locally and run by creating a virtual environment. If you are new to python, we recommend doing this through [Anaconda](https://www.anaconda.com/products/individual).
 
-- [scikit-image](https://scikit-image.org/)
-- [numpy](https://numpy.org/install/)
-- [glob](https://docs.python.org/3/library/glob.html)
-- [PIL](https://pillow.readthedocs.io/en/stable/)
-- [tqdm](https://github.com/tqdm/tqdm)
-- [matplotlib](https://matplotlib.org/stable/index.html)
+```
+git clone https://github.com/jlubbersgeo/ctpy
+cd /path/to/ctpy
+conda create -n ctpy
+conda activate ctpy
+conda install --file requirements.txt
+```
 
-## Usage
-It is recommended that ```CTPy``` is utilized in conjunction with the Jupyter ecosystem, as many of the functions require the user to make decisions based results of prior figures/functions. For an example of how to utilize ```CTPy``` in your own work, please see the **Example** folder 
+It is recommended that ```CTPy``` is utilized in conjunction with the Jupyter ecosystem, as many of the functions require the user to make decisions based results of prior figures/functions. For an example of how to utilize ```CTPy``` in your own work, please see the ```mineral_segmentation.ipynb``` example.
+
+
+From now on any time you wish to use ctpy, simply re-activate the virtual environment. All the requisite packages are still installed. 
+
+
+### Caveats
+
+On windows you may need to add the following channel for downloading the ```requirements.txt```file:
+```
+git clone https://github.com/jlubbersgeo/ctpy
+cd /path/to/ctpy
+conda create -n ctpy
+conda activate ctpy
+conda config --append channels conda-forge
+conda install --file requirements.txt
+```
+
