@@ -4,3 +4,4 @@ matplotlib==3.3.4
 pandas==1.2.4
 scikit-image==0.18.1
 Pillow==8.4.0
+pydicom==2.3.0
