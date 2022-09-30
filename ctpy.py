@@ -42,6 +42,9 @@ from skimage.segmentation import watershed
 # progress bar
 from tqdm.notebook import tqdm
 
+# for loading dicom images
+import pydicom as dicom
+
 
 #%%
 # helper function to import an entire folder of 2D images
@@ -60,13 +63,12 @@ def import_stack(filepath, filetype, name, downsample=False):
         that the files be in their own folder, as the function will import all 
         files from the directory as specified in the 'filetype' argument. 
     filetype : string
-        type of file the images are. Choices are 'tif', 'png', or 'jpg'.
+        type of file the images are. Choices are 'tif', 'png', 'jpg', or 'dicom'
     name : string
         name of the dataset you are working with. This will be utilized for 
         figure labeling and filesaving functions later on.
-    rescale: float
-        factor to downsample by. .5 is downsampling by factor of 2, .1 is factor 
-        of 10, etc.
+    downsample: int
+        factor to downsample by. 
 
     Returns
     -------
@@ -88,18 +90,43 @@ def import_stack(filepath, filetype, name, downsample=False):
     elif "jpg" in filetype:
         # creates a list of filepaths for each 2D images
         infiles = sorted(glob.glob("{}/*.jpg".format(filepath)))
+        
+    elif "dicom" in filetype:
+        #this grabs every single item in the dirpath 
+        all_files = glob.glob("{}/*".format(filepath))
 
-    # open the first image to acquire image size
-    im = Image.open(infiles[0])
+        #this should remove all file extensions e.g. .png .tiff .xlsx
+        #anything with a ".", but NOT FOLDERS
+        infiles = sorted([d for d in all_files if '.' not in d])
+        
+    
+    if "dicom" in filetype:
+        #open the first dicom file and get the data as a numpy array
+        im = dicom.dcmread(infiles[0]).pixel_array
+        # create an 'empty' array filled with zeros, (Slices X width X length) is the shape of the array.
+        # this is equivalent to (z, y, x) in cartesian space
+        stack = np.zeros((len(infiles), im.shape[0], im.shape[1]))
 
-    # create an 'empty' array filled with zeros, (Slices X width X length) is the shape of the array.
-    stack = np.zeros((len(infiles), im.size[1], im.size[0]))
+    
+    else:
+   
+        # open the first image to acquire image size
+        im = Image.open(infiles[0])
+
+        # create an 'empty' array filled with zeros, (Slices X width X length) is the shape of the array.
+        # this is equivalent to (z, y, x) in cartesian space
+        stack = np.zeros((len(infiles), im.size[1], im.size[0]))
 
     # loop the files, each iteration adds one slice layer into the array.
     i = 0
     print("Importing images")
-    for imfile in tqdm(infiles):
-        im = Image.open(imfile)
+    for imfile in tqdm(infiles, total = len(infiles), unit = 'files'):
+        if "dicom" in filetype:
+            im = dicom.dcmread(imfile).pixel_array
+        else:
+            
+            im = Image.open(imfile)
+            
         stack[i, :, :] = np.array(im)
         i += 1
 
@@ -170,7 +197,7 @@ def import_stack(filepath, filetype, name, downsample=False):
 
         # loop through and complete downsampling for every slice and
         # add it to the empty array defined above
-        for i in tqdm(range(stack.shape[0])):
+        for i in tqdm(range(stack.shape[0]), total = stack.shape[0], unit = 'images'):
 
             im = stack[i, :, :]
             im_downsample = (
@@ -213,6 +240,8 @@ def import_stack(filepath, filetype, name, downsample=False):
         print("your stack dimensions are {}".format(stack.shape))
 
         return stack, stack.shape
+
+
 
 
 #%%
