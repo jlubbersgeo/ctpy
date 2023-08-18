@@ -33,6 +33,9 @@ import numpy as np
 
 # saving metadata
 import pandas as pd
+
+# for loading dicom images
+import pydicom as dicom
 from PIL import Image
 
 # image processing
@@ -42,9 +45,6 @@ from skimage.segmentation import watershed
 
 # progress bar
 from tqdm.notebook import tqdm
-
-# for loading dicom images
-import pydicom as dicom
 
 
 #%%
@@ -489,7 +489,7 @@ def run_watershed_segmentation(elevation_array, markers):
     return segmentation
 
 #%%
-def save_seg_results(outpath, name, ws_results, cmap):
+def save_seg_results(outpath, name, ws_results, cmap,phase_limits):
     """
     save_seg_results takes each segmented 2D image (array) and saves them as 
     individual images to a desired folder. 
@@ -510,6 +510,17 @@ def save_seg_results(outpath, name, ws_results, cmap):
         throughout the entire project.
     ws_results : ndarray
         results from the watershed segmentation
+    phase_limits : list
+        list of values to be used as delimiters for the phase boundaries.
+        For phases that are neither the most or least attenuating values
+        will be a list:
+        
+        phase_limits = [[0.5],
+                        [0.6, 0.7],
+                        [0.84]]
+        This is the same input as the `add_markers` function
+                        
+
 
     Returns
     -------
@@ -521,7 +532,7 @@ def save_seg_results(outpath, name, ws_results, cmap):
 
         fig, axes = plt.subplots(nrows=1, ncols=1)
         ax0 = axes
-        ax0.imshow(ws_results[i], cmap=cmap)  # choose your segmentation algorithm here
+        ax0.imshow(ws_results[i], cmap=cmap,vmin = 0, vmax = len(phase_limits))  # choose your segmentation algorithm here
         ax0.axis("off")  # no axes so its just the image
 
         fig.set_size_inches(5, 5)
