@@ -532,7 +532,7 @@ def save_seg_results(outpath, name, ws_results, cmap,phase_limits):
 
         fig, axes = plt.subplots(nrows=1, ncols=1)
         ax0 = axes
-        ax0.imshow(ws_results[i], cmap=cmap,vmin = 0, vmax = len(phase_limits))  # choose your segmentation algorithm here
+        ax0.imshow(ws_results[i], cmap=cmap,vmin = 0, vmax = len(phase_limits)-1)  # choose your segmentation algorithm here
         ax0.axis("off")  # no axes so its just the image
 
         fig.set_size_inches(5, 5)
